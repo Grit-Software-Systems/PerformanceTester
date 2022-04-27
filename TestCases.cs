@@ -13,14 +13,16 @@ namespace PerfRunner
         public void Execute(
             string exePath,
             string suiteName,
-            string appInsightsInstrumentationKey = "")
+            string appInsightsInstrumentationKey = "",
+            string parentCorrelationId = "")
         {
             Dictionary<string, string> env = new Dictionary<string, string>();
             env.Add("appInsightsInstrumentationKey", appInsightsInstrumentationKey);
 
             string jsonSuite = suiteName;
+            string pCorrelationId = "parentCorrelationId:" + parentCorrelationId;
 
-            StartProcess(exePath, $"{suiteName}", env);
+            StartProcess(exePath, $"{suiteName} {pCorrelationId}", env);
         }
 
 

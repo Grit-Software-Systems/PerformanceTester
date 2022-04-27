@@ -1,7 +1,10 @@
-﻿using System.Configuration;
+﻿using System;
+using System.Collections.Generic;
+using System.Configuration;
 using System.IO;
 using System.Linq;
-using System.Threading.Tasks;
+using System.Threading;
+using Tools;
 
 namespace PerfRunner
 {
@@ -23,18 +26,27 @@ namespace PerfRunner
 
             string[] suites = suiteName.Split(',');
 
-            for (int iter = 0; iter < iterations; iter++)
+            for (int j = 0; j < suites.Length; j++)
             {
-                Parallel.ForEach(suites,
-                    new ParallelOptions { MaxDegreeOfParallelism = threadCount },
-                    suite => 
+                Guid overallId = Guid.NewGuid();
+                TelemetryLog log = new TelemetryLog(appInsightsInstrumentationkey);
+                log.TrackEvent("starting with the test suite: " + suites[j], "correlationId", overallId.ToString());
+                for (int iter = 0; iter < iterations; iter++)
                 {
-                    testCases.Execute(
-                        testRunnerPath,
-                        suite,
-                        appInsightsInstrumentationkey);
-                });
+                    List<WaitHandle> waitHandles = new List<WaitHandle>();
+                    for (int tc = 0; tc < threadCount; tc++)
+                    {
+                        ManualResetEvent waitHandle = new ManualResetEvent(false);
+                        waitHandles.Add(waitHandle);
+                        TestCases ts = new TestCases();
+                        Thread thread = new Thread(() => { ts.Execute(testRunnerPath, suites[j], appInsightsInstrumentationkey, overallId.ToString()); waitHandle.Set(); });
+                        thread.Start();
+                    }
+                    WaitHandle.WaitAll(waitHandles.ToArray());
+                }
+                log.TrackEvent("Completing the test suite: " + suites[j], "correlationId", overallId.ToString());
             }
+
         }
 
 
@@ -44,15 +56,15 @@ namespace PerfRunner
             ProcessArg(args, "executablePathPrefix", ref testRunnerPath);
             ProcessArg(args, "appInsightsInstrumentationKeyPrefix", ref appInsightsInstrumentationkey);
 
-            if(!testRunnerPath.Contains(".exe"))
+            if (!testRunnerPath.Contains(".exe"))
             {
                 testRunnerPath = Directory.GetFiles(testRunnerPath, "b2ctestcaserunner.exe").FirstOrDefault();
             }
 
             string value = "";
             ProcessArg(args, "threadsPrefix", ref value);
-            if (!string.IsNullOrEmpty(value)) 
-                threadCount = int.Parse(value);    
+            if (!string.IsNullOrEmpty(value))
+                threadCount = int.Parse(value);
 
             ProcessArg(args, "iterationsPrefix", ref value);
             if (!string.IsNullOrEmpty(value))
@@ -64,7 +76,7 @@ namespace PerfRunner
         {
             string prefix = Config(prefixName);
             string value = args.Where(a => a.ToLower().Contains(prefix.ToLower())).FirstOrDefault();
-            if(!string.IsNullOrEmpty(value))
+            if (!string.IsNullOrEmpty(value))
             {
                 field = value.Substring(prefix.Length);
             }
